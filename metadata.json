@@ -1,0 +1,8 @@
+{
+  "name": "Chaos Harmonics Viz",
+  "description": "3D audio visualizer using Three.js, Web Audio API, and GLSL shaders to render 80,000+ particles with mathematical shape transitions.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

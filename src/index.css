@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+/* 
+ * lil-gui Ethereal Glass Theme Override
+ * Soft backdrop blur, semi-transparent overlays fading into black.
+ */
+.lil-gui {
+  --background-color: transparent;
+  --text-color: rgba(255, 255, 255, 0.85);
+  --title-background-color: transparent;
+  --widget-color: rgba(255, 255, 255, 0.08);
+  --hover-color: rgba(255, 255, 255, 0.15);
+  --focus-color: rgba(255, 255, 255, 0.25);
+  --number-color: white;
+  --string-color: white;
+  --font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-size: 11px;
+  --folder-indent: 12px;
+  --border-radius: 8px;
+
+  /* Hide root title bar completely */
+  --title-border-color: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  
+  /* Ethereal Glass effect */
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 100%) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 12px 10px;
+  
+  top: 72px !important;
+  right: 32px !important;
+}
+
+/* Hide main title */
+.lil-gui.root > .title {
+  display: none !important;
+}
+
+/* Add a mask gradient to softly fade the bottom edge into nothingness */
+.lil-gui {
+  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+.lil-gui .title {
+  border: none !important;
+  color: white !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 12px 10px !important;
+}
+
+/* Make sliders minimal but visible */
+.lil-gui .slider {
+  height: 3px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 2px;
+  margin: 0 !important;
+}
+
+.lil-gui .slider .fill {
+  background: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.lil-gui .widget {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px;
+}
+
+/* Refine inputs */
+.lil-gui input[type=text], .lil-gui input[type=number], .lil-gui .dropdown {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 4px !important;
+  color: white !important;
+  padding: 2px 6px !important;
+}
+
+.lil-gui input[type=number]:focus {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Custom buttons */
+.lil-gui button {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 4px !important;
+  transition: all 0.3s ease !important;
+  text-transform: uppercase;
+  margin: 6px 0 !important;
+  height: 28px !important;
+}
+
+.lil-gui button:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+/* Controller layout tweaks */
+.lil-gui .controller {
+  transition: background 0.2s ease;
+  margin: 6px 0;
+  border-radius: 4px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px;
+  padding: 4px 8px !important;
+}
+.lil-gui .controller:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Controller names Title Case and aligned */
+.lil-gui .controller > .name {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+  width: 150px !important;
+  min-width: 150px !important;
+  max-width: 150px !important;
+  padding-left: 2px !important;
+  margin: 0 !important;
+  text-align: left;
+}
+
+.lil-gui .controller > .widget {
+  width: calc(100% - 150px) !important;
+  margin: 0 !important;
+}
+
