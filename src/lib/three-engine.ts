@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import GUI from 'lil-gui';
-import { audioEngine } from './audio';
+import { audioEngine, AudioFeatures } from './audio';
 import { getShapeData, PARTICLE_COUNT, ShapeName } from './shapes';
 
 export class SceneManager {
@@ -26,7 +26,7 @@ export class SceneManager {
   private gui: GUI;
   private controls: OrbitControls;
   private currentRotationY: number = 0;
-  private currentShape: ShapeName = 'DNA_v5';
+  private currentShape: ShapeName = 'DNA_1_Orbits';
   
   // Smoothing state for audio reactivity (Lerp)
   private smoothedBass: number = 0;
@@ -40,14 +40,19 @@ export class SceneManager {
     beatPulse: 1.0,
     beatScaleLimit: 1.15,
     explosionIntensity: 1.0,
-    particleSize: 0.08,
+    particleSize: 0.2, // increased size based on user parameter testing
     rotationSpeed: 1.0,
     audioColorReactivity: 1.0,
     trebleSensitivity: 1.0,
-    bloomStrengthBase: 0.2,
-    bloomRadius: 0.2,
-    maxBeatGlow: 0.3,
+    bloomStrengthBase: 0.0,
+    bloomRadius: 0.0,
+    maxBeatGlow: 0.0,
   };
+  
+  public visualMode: 'Deep Space' | 'Atmospheric' | 'Dynamic' = 'Deep Space';
+  public targetBackgroundColor: THREE.Color = new THREE.Color(0x000000);
+  public currentBackgroundColor: THREE.Color = new THREE.Color(0x000000);
+  public currentTrackGenre: string = 'Cosmic Ambient';
   
   private defaultSettings = { ...this.settings };
   private bloomPass!: UnrealBloomPass;
@@ -55,12 +60,12 @@ export class SceneManager {
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000000);
     
     this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.z = 60;
     
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: true });
+    this.renderer.setClearColor(0x000000, 0);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.container.appendChild(this.renderer.domElement);
@@ -69,7 +74,7 @@ export class SceneManager {
 
     const renderScene = new RenderPass(this.scene, this.camera);
     // Adjusted bloom for tightly controlled, clear light beam effect
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.2, 0.2, 0.2);
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), this.settings.bloomStrengthBase, this.settings.bloomRadius, 0.2);
     const outputPass = new OutputPass();
 
     this.composer = new EffectComposer(this.renderer);
@@ -139,6 +144,7 @@ export class SceneManager {
         uParticleSize: { value: this.settings.particleSize },
         uAudioColorReactivity: { value: this.settings.audioColorReactivity },
         uTrebleSensitivity: { value: this.settings.trebleSensitivity },
+        uPixelRatio: { value: window.devicePixelRatio },
       },
       vertexShader: `
         uniform float uTime;
@@ -154,6 +160,7 @@ export class SceneManager {
         uniform float uExplosionIntensity;
         uniform float uParticleSize;
         uniform float uTrebleSensitivity;
+        uniform float uPixelRatio;
 
         attribute vec3 targetPosition;
         attribute float randomSeed;
@@ -202,7 +209,7 @@ export class SceneManager {
 
             // Base size is strictly uParticleSize for crispness
             float size = uParticleSize + (effectiveTreble * effectiveTreble) * 20.0 * uParticleSize;
-            gl_PointSize = size * (200.0 / -mvPosition.z); // Adjust depth perspective
+            gl_PointSize = min(size * uPixelRatio * (650.0 / -mvPosition.z), 4.8); // Adjust depth perspective with strict clamping
 
             vColor = color;
             vAudioReact = effectiveTreble * 1.5 + uBass * 1.0 + uMid * 0.5;
@@ -277,8 +284,8 @@ export class SceneManager {
     this.gui.add(this.settings, 'beatPulse', 0, 3).name('Beat Pulse').onChange(updateUniforms);
     this.gui.add(this.settings, 'beatScaleLimit', 1.0, 2.0).name('Beat Scale Limit').onChange(updateUniforms);
     this.gui.add(this.settings, 'explosionIntensity', 0, 3).name('Explosion Intensity').onChange(updateUniforms);
-    this.gui.add(this.settings, 'particleSize', 0.01, 0.5).name('Particle Size').onChange(updateUniforms);
-    this.gui.add(this.settings, 'rotationSpeed', 0, 3).name('Rotation Speed');
+    this.gui.add(this.settings, 'particleSize', 0.01, 0.4).name('Particle Size').onChange(updateUniforms);
+    this.gui.add(this.settings, 'rotationSpeed', -3, 3).name('Rotation Speed');
     this.gui.add(this.settings, 'audioColorReactivity', 0, 3).name('Audio Color Reactivity').onChange(updateUniforms);
     this.gui.add(this.settings, 'trebleSensitivity', 0, 3).name('Treble Sensitivity').onChange(updateUniforms);
     this.gui.add(this.settings, 'bloomStrengthBase', 0, 1).name('Bloom Base Strength').onChange(() => {});
@@ -311,10 +318,22 @@ export class SceneManager {
         duration: 2.5,
         ease: "power2.inOut",
         onComplete: () => {
-            this.geometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
+            this.geometry.setAttribute('position', new THREE.BufferAttribute(shapeData.positions, 3));
             this.material.uniforms.uTransition.value = 0;
         }
     });
+  }
+
+  private determineGenre(features: AudioFeatures): string {
+      if (!audioEngine.isPlaying && audioEngine.currentSeed === 42) {
+          return "Cosmic Ambient";
+      }
+      if (features.energy < 0.35 && features.dynamics < 0.4) return "Ambient / Atmospheric";
+      if (features.spectralBias < 0.4 && features.energy > 0.6) return "Techno / Electronic";
+      if (features.spectralBias > 0.6 && features.energy < 0.6) return "Classical / Acoustic";
+      if (features.dynamics > 0.7) return "Orchestral / Cinematic";
+      if (features.energy > 0.7 && features.dynamics > 0.5) return "Rock / High Energy";
+      return "Experimental / Jazz";
   }
 
   private updateColors(shape: ShapeName) {
@@ -342,7 +361,7 @@ export class SceneManager {
        color1.setHSL(hue1, sat, lit);
        color2.setHSL(hue2, sat, lit);
        
-       this.settings.noiseStrength = 0.1 + xorshift() * 0.3;
+       this.settings.noiseStrength = 0.0;
        this.settings.beatPulse = 0.5 + xorshift() * 2.0;
        this.settings.rotationSpeed = (xorshift() - 0.5) * 2.0;
        this.settings.audioColorReactivity = 0.6 + xorshift() * 1.5;
@@ -358,42 +377,14 @@ export class SceneManager {
        if (this.gui) {
          this.gui.controllersRecursive().forEach(c => c.updateDisplay());
        }
-    } else if (shape === 'Signature' || shape === 'Mutation' || shape === 'Identity') {
-       const features = audioEngine.features;
-       
-       let hue1 = (1.0 - features.spectralBias) * 0.15 + features.spectralBias * 0.6; 
-       let hue2 = (hue1 + 0.15 + features.dynamics * 0.2) % 1.0; 
-
-       if (shape === 'Mutation') {
-           hue1 = (hue1 + 0.35) % 1.0; 
-           hue2 = (hue1 + 0.15 + features.dynamics * 0.2) % 1.0; 
-       } else if (shape === 'Identity') {
-           if (features.energy < 0.4 && features.dynamics < 0.5) { // Ambient
-               hue1 = 0.55; // Deep blue/cyan
-               hue2 = 0.65; // Soft purple
-           } else if (features.spectralBias < 0.4 && features.energy > 0.6) { // Techno
-               hue1 = 0.0; // Red
-               hue2 = 0.1; // Orange/gold
-           } else if (features.spectralBias > 0.6 && features.energy < 0.6) { // Piano
-               hue1 = 0.1; // Champagne
-               hue2 = 0.5; // Cyan
-           } else if (features.dynamics > 0.7) { // Orchestral
-               hue1 = 0.15; // Gold
-               hue2 = 0.8; // Magenta
-           } else { // Jazz
-               hue1 = features.spectralBias;
-               hue2 = (hue1 + 0.3) % 1.0;
-           }
-       }
-       
-       const sat = 0.6 + features.energy * 0.4;
+    } else if (shape === 'Signature') { const features = audioEngine.features; let hue1 = (1.0 - features.spectralBias) * 0.15 + features.spectralBias * 0.6; let hue2 = (hue1 + 0.15 + features.dynamics * 0.2) % 1.0; const sat = 0.6 + features.energy * 0.4; const lit = 0.4 + features.dynamics * 0.3; color1.setHSL(hue1, sat, lit); color2.setHSL(hue2, sat, lit); this.settings.noiseStrength = 0.0; this.settings.beatPulse = 0.5 + features.energy * 2.0; this.settings.rotationSpeed = 0.2 + features.energy * 1.5; this.settings.audioColorReactivity = 0.5 + features.dynamics * 2.0; this.settings.trebleSensitivity = 0.5 + features.spectralBias * 2.0; if (this.material) { this.material.uniforms.uNoiseStrength.value = this.settings.noiseStrength; this.material.uniforms.uBeatPulse.value = this.settings.beatPulse; this.material.uniforms.uAudioColorReactivity.value = this.settings.audioColorReactivity; this.material.uniforms.uTrebleSensitivity.value = this.settings.trebleSensitivity; } if (this.gui) { this.gui.controllersRecursive().forEach(c => c.updateDisplay()); } } else if (['Identity', 'Mutation', 'Galaxy', 'Lorenz', 'Menger', 'Aizawa'].includes(shape)) { const features = audioEngine.features; let hue1 = (1.0 - features.spectralBias) * 0.15 + features.spectralBias * 0.6; let hue2 = (hue1 + 0.15 + features.dynamics * 0.2) % 1.0; if (features.energy < 0.4 && features.dynamics < 0.5) { hue1 = 0.55; hue2 = 0.65; } else if (features.spectralBias < 0.4 && features.energy > 0.6) { hue1 = 0.0; hue2 = 0.1; } else if (features.spectralBias > 0.6 && features.energy < 0.6) { hue1 = 0.1; hue2 = 0.5; } else if (features.dynamics > 0.7) { hue1 = 0.15; hue2 = 0.8; } else { hue1 = features.spectralBias; hue2 = (hue1 + 0.3) % 1.0; } const sat = 0.6 + features.energy * 0.4;
        const lit = 0.4 + features.dynamics * 0.3;
        
        color1.setHSL(hue1, sat, lit);
        color2.setHSL(hue2, sat, lit);
        
        // Update settings based on Audio DNA
-       this.settings.noiseStrength = 0.5 + features.dynamics * 2.0;
+       this.settings.noiseStrength = 0.0;
        this.settings.beatPulse = 0.5 + features.energy * 2.0;
        this.settings.rotationSpeed = 0.2 + features.energy * 1.5;
        this.settings.audioColorReactivity = 0.5 + features.dynamics * 2.0;
@@ -412,25 +403,107 @@ export class SceneManager {
          this.gui.controllersRecursive().forEach(c => c.updateDisplay());
        }
     } else {
-       // Reset to default
-       color1.setHex(0xfcfcfc);
-       color2.setHex(0xf0eed8);
+       const dnaState = { seed: audioEngine.currentSeed !== 0 ? audioEngine.currentSeed : 0x12345678 };
+       const xorshift = () => {
+         let x = dnaState.seed;
+         x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+         dnaState.seed = x;
+         return (x >>> 0) / 4294967296.0;
+       };
+       
+       let hue1 = xorshift();
+       let hue2 = (hue1 + 0.2 + xorshift() * 0.4) % 1.0;
+       
+       const features = audioEngine.features;
+       hue1 = (hue1 + features.spectralBias * 0.2) % 1.0;
+       hue2 = (hue2 + features.energy * 0.2) % 1.0;
+       
+       const sat = 0.6 + features.energy * 0.4;
+       const lit = 0.4 + features.dynamics * 0.3;
+       
+       color1.setHSL(hue1, sat, lit);
+       color2.setHSL(hue2, sat, lit);
     }
 
+    let atmosphericBgHue = 0;
+
+    // Atmospheric mode creates bold, neon, contrasting color schemes
+    if (this.visualMode === 'Atmospheric') {
+        const hsl1 = { h: 0, s: 0, l: 0 };
+        const hsl2 = { h: 0, s: 0, l: 0 };
+        color1.getHSL(hsl1);
+        color2.getHSL(hsl2);
+        
+        atmosphericBgHue = hsl1.h;
+
+        // Color Theory Fix: Apply a bold, contrasting accent hue (e.g. analogous + split complement or triadic)
+        // Shift colors away from the background hue to ensure they "pop" and avoid "color lost"
+        const accentHue1 = (hsl1.h + 0.35) % 1.0; 
+        const accentHue2 = (hsl1.h + 0.65) % 1.0; 
+
+        // Luminance Boost: Force particles to be brighter so they pierce the background
+        color1.setHSL(accentHue1, 1.0, 0.85);
+        color2.setHSL(accentHue2, 1.0, 0.85);
+    } else if (this.visualMode === 'Dynamic') {
+        const hsl1 = { h: 0, s: 0, l: 0 };
+        color1.getHSL(hsl1);
+        
+        // High saturation, intense gradient from e.g., yellow to purple
+        const centerHue = (hsl1.h + 0.15) % 1.0; 
+        const edgeHue = (hsl1.h - 0.25 + 1.0) % 1.0;
+        
+        color2.setHSL(centerHue, 1.0, 0.7); // Bright hot center
+        color1.setHSL(edgeHue, 1.0, 0.4);   // Deep outer edges
+    }
+
+    const positionsAttr = this.geometry.getAttribute('targetPosition') as THREE.BufferAttribute;
+    const pos = positionsAttr ? (positionsAttr.array as Float32Array) : null;
+
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const mix = Math.random();
+        let mix;
+        if (this.visualMode === 'Dynamic' && pos) {
+            const x = pos[i*3];
+            const y = pos[i*3+1];
+            const z = pos[i*3+2];
+            const dist = Math.sqrt(x*x + y*y + z*z);
+            // rawMix goes from 1 (center) to 0 (far edge)
+            const rawMix = Math.max(0, Math.min(1, 1.0 - (dist / 60.0))); 
+            mix = Math.pow(rawMix, 1.2); 
+        } else {
+            mix = Math.random();
+        }
         const mixedColor = color1.clone().lerp(color2, mix);
         colors[i*3] = mixedColor.r;
         colors[i*3+1] = mixedColor.g;
         colors[i*3+2] = mixedColor.b;
     }
     colorsAttr.needsUpdate = true;
+
+    this.currentTrackGenre = this.determineGenre(audioEngine.features);
+
+    // Calculate and set target background color based on visual mode
+    if (this.visualMode === 'Atmospheric') {
+        // Deep saturation of dominant line color at the center
+        this.targetBackgroundColor.setHSL(atmosphericBgHue, 1.0, 0.18);
+    } else if (this.visualMode === 'Dynamic') {
+        const hsl = { h: 0, s: 0, l: 0 };
+        color1.getHSL(hsl);
+        // Very deep, barely visible center glow
+        this.targetBackgroundColor.setHSL(hsl.h, 0.9, 0.04);
+    } else {
+        this.targetBackgroundColor.setHex(0x000000);
+    }
   }
 
   public toggleControls(show: boolean) {
     if (this.gui) {
         this.gui.domElement.style.display = show ? 'block' : 'none';
     }
+  }
+
+  public setVisualMode(mode: 'Deep Space' | 'Atmospheric' | 'Dynamic') {
+    this.visualMode = mode;
+    this.updateColors(this.currentShape);
   }
 
   private onWindowResize = () => {
@@ -486,6 +559,18 @@ export class SceneManager {
     this.points.rotation.y = this.currentRotationY;
     this.points.rotation.x = Math.sin(time * 0.1) * 0.2 * this.settings.rotationSpeed;
     this.points.rotation.z = Math.cos(time * 0.1) * 0.1 * this.settings.rotationSpeed;
+    
+    this.currentBackgroundColor.lerp(this.targetBackgroundColor, 0.02);
+    if (this.visualMode === 'Atmospheric') {
+        const centerHex = '#' + this.currentBackgroundColor.getHexString();
+        this.container.style.background = `radial-gradient(circle farthest-corner at center, ${centerHex} 0%, #08090a 100%)`;
+    } else if (this.visualMode === 'Dynamic') {
+        const centerHex = '#' + this.currentBackgroundColor.getHexString();
+        this.container.style.background = `radial-gradient(circle farthest-corner at center, ${centerHex} 0%, #030304 40%, #000000 100%)`;
+    } else {
+        const hex = '#' + this.currentBackgroundColor.getHexString();
+        this.container.style.background = hex;
+    }
     
     this.controls.update();
 

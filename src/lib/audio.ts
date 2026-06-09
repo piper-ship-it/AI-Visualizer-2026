@@ -29,72 +29,66 @@ export class AudioEngine {
     }
   }
 
-  async loadUrl(url: string, title: string) {
+  async loadUrl(url: string, title: string, seed?: number) {
     this.init();
-    
-    // Hash title to create a DNA seed
-    const text = `${title}-${url}`;
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-        hash = Math.imul(31, hash) + text.charCodeAt(i) | 0;
+    if (this.ctx?.state === 'suspended') {
+      this.ctx.resume().catch(e => console.error("AudioContext resume failed:", e));
     }
-    this.currentSeed = Math.abs(hash) || 42;
+    
+    if (seed !== undefined) {
+      this.currentSeed = seed;
+    } else {
+      const text = `${title}-${url}`;
+      let hash = 0;
+      for (let i = 0; i < text.length; i++) {
+          hash = Math.imul(31, hash) + text.charCodeAt(i) | 0;
+      }
+      this.currentSeed = Math.abs(hash) || 42;
+    }
+
+    if (this.audioEl) {
+      this.audioEl.pause();
+      this.audioEl.remove();
+      this.source?.disconnect();
+    }
+
+    this.audioEl = new Audio();
+    this.audioEl.loop = true;
+    
+    this.audioEl.onplay = () => { this.isPlaying = true; this.onPlayStatusChange?.(true); };
+    this.audioEl.onpause = () => { this.isPlaying = false; this.onPlayStatusChange?.(false); };
+
+    if (this.ctx && this.analyser) {
+        this.source = this.ctx.createMediaElementSource(this.audioEl);
+        this.source.connect(this.analyser);
+        this.analyser.connect(this.ctx.destination);
+    }
+
+    if (!url.startsWith('blob:')) {
+        this.audioEl.crossOrigin = "anonymous";
+    }
+    this.audioEl.src = url;
+    this.play();
 
     try {
       const response = await fetch(url);
       const arrayBuffer = await response.arrayBuffer();
-      // Need a clone
-      const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer.slice(0));
+      const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer);
       this.extractFeatures(audioBuffer);
-      
-      const blob = new Blob([arrayBuffer]);
-      const blobUrl = URL.createObjectURL(blob);
-      
-      if (this.audioEl) {
-        this.audioEl.pause();
-        this.audioEl.remove();
-        this.source?.disconnect();
-      }
-
-      this.audioEl = new Audio(blobUrl);
-      this.audioEl.crossOrigin = "anonymous";
-      this.audioEl.loop = true;
-      
-      this.audioEl.onplay = () => { this.isPlaying = true; this.onPlayStatusChange?.(true); };
-      this.audioEl.onpause = () => { this.isPlaying = false; this.onPlayStatusChange?.(false); };
-
-      if (this.ctx && this.analyser) {
-          this.source = this.ctx.createMediaElementSource(this.audioEl);
-          this.source.connect(this.analyser);
-          this.analyser.connect(this.ctx.destination);
-      }
-      
-      this.play();
     } catch (e) {
-      console.warn("Failed to load url", e);
+      console.warn("Failed to fetch and extract offline.", e);
     }
   }
 
   async loadFile(file: File) {
     this.init();
     
-    // Hash file properties to create a DNA seed
     const text = `${file.name}-${file.size}-${file.type}`;
     let hash = 0;
     for (let i = 0; i < text.length; i++) {
         hash = Math.imul(31, hash) + text.charCodeAt(i) | 0;
     }
     this.currentSeed = Math.abs(hash) || 42;
-
-    // Analyze full buffer for signature
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      // Need a clone because decodeAudioData detaches the arrayBuffer
-      const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer.slice(0));
-      this.extractFeatures(audioBuffer);
-    } catch (e) {
-      console.warn("Failed to extract audio features", e);
-    }
 
     if (this.audioEl) {
       this.audioEl.pause();
@@ -104,7 +98,6 @@ export class AudioEngine {
 
     const url = URL.createObjectURL(file);
     this.audioEl = new Audio(url);
-    this.audioEl.crossOrigin = "anonymous";
     this.audioEl.loop = true;
     
     this.audioEl.onplay = () => { this.isPlaying = true; this.onPlayStatusChange?.(true); };
@@ -117,13 +110,32 @@ export class AudioEngine {
     }
     
     this.play();
+
+    // Analyze full buffer for signature
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      // Need a clone because decodeAudioData detaches the arrayBuffer
+      const audioBuffer = await this.ctx!.decodeAudioData(arrayBuffer.slice(0));
+      this.extractFeatures(audioBuffer);
+    } catch (e) {
+      console.warn("Failed to extract audio features", e);
+    }
   }
 
   play() {
     if (this.ctx?.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(e => console.error("AudioContext resume failed:", e));
     }
-    this.audioEl?.play();
+    if (this.audioEl) {
+      const playPromise = this.audioEl.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(e => {
+          console.error("Audio playback failed:", e);
+          this.isPlaying = false;
+          this.onPlayStatusChange?.(false);
+        });
+      }
+    }
   }
 
   pause() {
@@ -133,6 +145,24 @@ export class AudioEngine {
   toggle() {
     if (this.isPlaying) this.pause();
     else this.play();
+  }
+
+  getCurrentTime(): number {
+    return this.audioEl?.currentTime || 0;
+  }
+
+  getDuration(): number {
+    return this.audioEl?.duration || 0;
+  }
+
+  seek(time: number) {
+    if (this.audioEl) {
+      this.audioEl.currentTime = time;
+    }
+  }
+
+  getAudioElement(): HTMLAudioElement | null {
+    return this.audioEl;
   }
 
   private extractFeatures(buffer: AudioBuffer) {

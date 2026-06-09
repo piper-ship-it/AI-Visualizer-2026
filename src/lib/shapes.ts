@@ -1,8 +1,13 @@
 import { AudioFeatures } from './audio';
 
-export const PARTICLE_COUNT = 180000;
+export const PARTICLE_COUNT = 60000;
 
-export type ShapeName = 'DNA' | 'DNA_v2' | 'DNA_v3' | 'DNA_v4' | 'DNA_v5' | 'Identity' | 'Signature' | 'Mutation' | 'Galaxy' | 'Menger' | 'Lorenz' | 'Aizawa';
+export const SHAPE_NAMES = [
+  'DNA_1_Orbits', 'DNA_2_Ribbons', 'DNA_3_FlowField', 'DNA_4_Resonance', 'DNA_5_Fibers', 
+  'Identity', 'Signature', 'Mutation', 'Galaxy', 'Menger', 'Lorenz', 'Aizawa'
+] as const;
+
+export type ShapeName = typeof SHAPE_NAMES[number];
 
 export interface ShapeData {
   positions: Float32Array;
@@ -18,19 +23,19 @@ export function getShapeData(shape: ShapeName, features?: AudioFeatures, seed: n
   }
 
   switch (shape) {
-    case 'DNA':
+    case 'DNA_2_Ribbons':
       generateDNA(positions, seed, progresses);
       break;
-    case 'DNA_v2':
+    case 'DNA_3_FlowField':
       generateDNAv2(positions, seed, progresses);
       break;
-    case 'DNA_v3':
+    case 'DNA_4_Resonance':
       generateDNAv3(positions, seed, progresses);
       break;
-    case 'DNA_v4':
+    case 'DNA_5_Fibers':
       generateDNAv4(positions, seed, progresses);
       break;
-    case 'DNA_v5':
+    case 'DNA_1_Orbits':
       generateDNAv5(positions, seed, progresses);
       break;
     case 'Identity':
@@ -573,8 +578,8 @@ function generateDNAv2(positions: Float32Array, seed: number, progresses?: Float
     const theta = u * 2.0 * Math.PI;
     const phi = Math.acos(2.0 * v - 1.0);
     
-    // Exponential falloff so dust gathers around the center of mass
-    const r = scale * 1.8 * Math.pow(random(), 2.0); 
+    // Exponential falloff so dust gathers around the center of mass, but more diffuse
+    const r = scale * 1.8 * Math.pow(random(), 0.8); 
     positions[pIdx * 3]     = r * Math.sin(phi) * Math.cos(theta);
     positions[pIdx * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[pIdx * 3 + 2] = r * Math.cos(phi);
@@ -709,8 +714,8 @@ function generateDNAv3(positions: Float32Array, seed: number, progresses?: Float
     const theta = u * 2.0 * Math.PI;
     const phi = Math.acos(2.0 * v - 1.0);
     
-    // Very tight glowing core
-    const r = scale * 0.05 * Math.pow(random(), 3.0); 
+    // Less clumpy core
+    const r = scale * 0.15 * Math.pow(random(), 0.8);
     positions[pIdx * 3]     = r * Math.sin(phi) * Math.cos(theta);
     positions[pIdx * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[pIdx * 3 + 2] = r * Math.cos(phi);
@@ -799,7 +804,7 @@ function generateDNAv4(positions: Float32Array, seed: number, progresses?: Float
     if (progresses) progresses[pIdx] = 0.0; // The core stays lit at time 0
     const u = random() * Math.PI * 2;
     const v = Math.acos(2.0 * random() - 1.0);
-    const r = scale * 0.08 * Math.pow(random(), 4.0); // Extremely tight core
+    const r = scale * 0.15 * Math.pow(random(), 0.8); // Less clumped core
     positions[pIdx * 3]     = r * Math.sin(v) * Math.cos(u);
     positions[pIdx * 3 + 1] = r * Math.sin(v) * Math.sin(u);
     positions[pIdx * 3 + 2] = r * Math.cos(v);
@@ -811,35 +816,39 @@ function generateDNAv5(positions: Float32Array, seed: number, progresses?: Float
   const state = { seed: seed !== 0 ? seed : 0x55555555 };
   const random = () => xorshift32(state);
 
-  const scale = 45 + random() * 20;
+  const scale = 50 + random() * 20;
   let pIdx = 0;
-
-  // Topology features based on DNA
-  const hasHorizontalCore = random() > 0.4;
   
-  // Mixed topology elements: Lines (Orbits), Surfaces (Nebula), Points (Starfield)
-  const numOrbits = 4 + Math.floor(random() * 8); // more rings for screenshot style
-  const orbitParticles = Math.floor((PARTICLE_COUNT * 0.35) / numOrbits); 
+  // Mixed topology elements: Lines (Orbits), Points (Starfield)
+  // We want heavily line-dominant structures.
+  const numOrbits = 6 + Math.floor(random() * 8); // more rings, elegant long petals
+  const orbitParticles = Math.floor((PARTICLE_COUNT * 0.88) / numOrbits); 
   
-  const hasNebula = random() > 0.4;
-  const nebulaParticles = hasNebula ? Math.floor(PARTICLE_COUNT * 0.25) : 0;
-  
-  const starParticles = Math.floor(PARTICLE_COUNT * 0.2); // thick background stars
+  const starParticles = Math.floor(PARTICLE_COUNT * 0.10); // 10% background stars
   
   // 1. Orbits (Crisp, elegant intersecting ellipses/rings)
   for (let o = 0; o < numOrbits; o++) {
-    const rx = scale * (0.5 + random() * 1.5);
-    const ry = scale * (0.05 + random() * 0.3); // Flatter ovals
+    // Elegant elongated ellipses passing closely to center
+    const rx = scale * (0.8 + random() * 1.5);
+    const ry = scale * (0.02 + random() * 0.15); // Very flat ovals (squashed rings)
     
     // Random rotation for the orbit plane
-    const rotX = (random() - 0.5) * Math.PI;
+    const rotX = (random() - 0.5) * Math.PI * 2;
     const rotY = (random() - 0.5) * Math.PI * 2;
     const rotZ = (random() - 0.5) * Math.PI * 2;
-    const width = scale * 0.0015 * random(); // Extremely sharp lines
+    const width = scale * 0.0005 + random() * 0.001; // Extremely sharp lines
+
+    const clusterFreq = 1 + Math.floor(random() * 4); // 1-4 high density points on ring
+    const clusterStrength = 0.1 + random() * 0.15; // How strongly they cluster
 
     for (let i = 0; i < orbitParticles; i++) {
         if (pIdx >= PARTICLE_COUNT) break;
-        const t = i / (orbitParticles - 1); // 0 to 1
+        
+        const rawT = i / (orbitParticles - 1); 
+        // Distortion for density variation (rhythmic clustering)
+        const t = rawT + Math.sin(rawT * Math.PI * 2 * clusterFreq) * clusterStrength; 
+        
+        // To maintain flow, progresses needs a monotonic progression, or at least smooth.
         if (progresses) progresses[pIdx] = t; // Flows over time
 
         const angle = t * Math.PI * 2;
@@ -871,76 +880,31 @@ function generateDNAv5(positions: Float32Array, seed: number, progresses?: Float
     }
   }
 
-  // 2. Nebula / Surfaces (Smoothly varying flow fields or layered minimal clouds)
-  if (hasNebula) {
-    const numSurfaces = 1 + Math.floor(random() * 3);
-    const pPerSurface = Math.floor(nebulaParticles / numSurfaces);
-    
-    for (let s = 0; s < numSurfaces; s++) {
-      const radius = scale * (0.2 + random() * 1.2);
-      const freq1 = 1 + Math.floor(random() * 4);
-      const freq2 = 1 + Math.floor(random() * 4);
-      const distort = 0.2 + random() * 0.5;
-      
-      for(let i=0; i<pPerSurface; i++) {
-        if (pIdx >= PARTICLE_COUNT) break;
-        if (progresses) progresses[pIdx] = random();
-        
-        // Distribute spherically and deform based on spherical harmonics
-        const u = random() * Math.PI * 2;
-        const v = Math.acos(2 * random() - 1);
-        
-        const r = radius * (1.0 + distort * Math.sin(freq1 * u) * Math.cos(freq2 * v));
-        
-        positions[pIdx * 3]     = r * Math.sin(v) * Math.cos(u);
-        // Squish the nebula so it doesn't take over vertically
-        positions[pIdx * 3 + 1] = r * Math.sin(v) * Math.sin(u) * (0.3 + random()*0.4); 
-        positions[pIdx * 3 + 2] = r * Math.cos(v);
-        pIdx++;
-      }
-    }
-  }
-
-  // 3. Dense Edge-on Core / Accretion Disk
-  const coreParticles = PARTICLE_COUNT - pIdx - starParticles;
-  for (let i = 0; i < coreParticles; i++) {
+  // 2. Distant Starfield (Points)
+  for (let i = 0; i < starParticles; i++) {
     if (pIdx >= PARTICLE_COUNT) break;
-    // The core glows in sync roughly, slightly noisy
-    if (progresses) progresses[pIdx] = random();
-
-    if (hasHorizontalCore) {
-      // Edge-on disk (dense along XZ plane, thin on Y)
-      const r = scale * 0.7 * Math.pow(random(), 2.0); // exponentially dense near center
-      const theta = random() * Math.PI * 2;
-      // Gets thicker further out, but very tight near the center
-      const height = (random() - 0.5) * (r * 0.05 + scale * 0.005); 
-      
-      positions[pIdx * 3]     = r * Math.cos(theta);
-      positions[pIdx * 3 + 1] = height;
-      positions[pIdx * 3 + 2] = r * Math.sin(theta);
-    } else {
-      // Ultra-dense tight spherical core
-      const r = scale * 0.12 * Math.pow(random(), 3.0); 
-      const u = random() * Math.PI * 2;
-      const v = Math.acos(2 * random() - 1);
-      
-      positions[pIdx * 3]     = r * Math.sin(v) * Math.cos(u);
-      positions[pIdx * 3 + 1] = r * Math.sin(v) * Math.sin(u);
-      positions[pIdx * 3 + 2] = r * Math.cos(v);
-    }
-    pIdx++;
-  }
-
-  // 4. Distant Starfield (Points)
-  while (pIdx < PARTICLE_COUNT) {
     if (progresses) progresses[pIdx] = random(); // Firing randomly
     // Far-reaching stars scattered loosely
-    const r = scale * (1.5 + random() * 4.0); 
+    const r = scale * (0.5 + random() * 4.0); 
     const u = random() * Math.PI * 2;
     const v = Math.acos(2 * random() - 1);
     
     positions[pIdx * 3]     = r * Math.sin(v) * Math.cos(u);
-    positions[pIdx * 3 + 1] = r * Math.sin(v) * Math.sin(u) * (0.2 + random() * 0.8); // slight squash
+    positions[pIdx * 3 + 1] = r * Math.sin(v) * Math.sin(u);
+    positions[pIdx * 3 + 2] = r * Math.cos(v);
+    pIdx++;
+  }
+
+  // 3. Very subtle and minimal Core points
+  while (pIdx < PARTICLE_COUNT) {
+    if (progresses) progresses[pIdx] = random(); 
+    // Just a clean tiny cluster
+    const r = scale * 0.1 * Math.pow(random(), 1.5); 
+    const u = random() * Math.PI * 2;
+    const v = Math.acos(2 * random() - 1);
+    
+    positions[pIdx * 3]     = r * Math.sin(v) * Math.cos(u);
+    positions[pIdx * 3 + 1] = r * Math.sin(v) * Math.sin(u);
     positions[pIdx * 3 + 2] = r * Math.cos(v);
     pIdx++;
   }
